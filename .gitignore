@@ -1,0 +1,7 @@
+datasets/
+venv/
+.venv/
+/venv/
+/.venv/
+/datasets/
+/.idea/
