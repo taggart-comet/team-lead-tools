@@ -6,13 +6,10 @@ from plotly.subplots import make_subplots
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
-import sys
 import os
 
 # Import our Task and Sprint classes
-sys.path.insert(0, os.path.join(os.getcwd(), 'Internal'))
-from jira.task import Task
-from jira.sprint import Sprint
+from internal.jira import Task, Sprint
 
 # Page configuration
 st.set_page_config(
@@ -274,37 +271,211 @@ def main():
     
     # Get metrics from Sprint object for backward compatibility
     capacity_by_platform = sprint.GetPlatformMetrics()
-    capacity_by_type = sprint.GetCapacityByType()
-    closed_df = sprint.GetClosedTasksAsDataFrame()
     
-    # Display key metrics using clean Sprint methods
+    # Enhanced Metrics Section with Subtle Styling
+    st.markdown("""
+    <style>
+    .metric-card {
+        background: #f8f9fa;
+        padding: 0.6rem;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        margin: 0.25rem 0;
+        transition: box-shadow 0.2s ease;
+        color: #212529;
+    }
+    
+    .metric-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .metric-completed {
+        background: #f8f9fa;
+        border-left: 4px solid #28a745;
+    }
+    
+    .metric-planned {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+    }
+    
+    .metric-scope {
+        background: #f8f9fa;
+        border-left: 4px solid #dc3545;
+    }
+    
+    .metric-title {
+        font-size: 0.7rem;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    
+    .metric-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0.1rem 0;
+        color: #212529;
+    }
+    
+    .metric-subtitle {
+        font-size: 0.65rem;
+        color: #6c757d;
+        margin-top: 0.1rem;
+    }
+    
+    .metric-icon {
+        font-size: 1rem;
+        margin-bottom: 0.15rem;
+        display: block;
+        opacity: 0.7;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 3px;
+        background-color: #e9ecef;
+        border-radius: 2px;
+        margin-top: 0.4rem;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background-color: #007bff;
+        border-radius: 2px;
+        transition: width 0.3s ease;
+    }
+    
+    .metric-completed .progress-fill {
+        background-color: #28a745;
+    }
+    
+    .metric-planned .progress-fill {
+        background-color: #007bff;
+    }
+    
+    .metric-scope .progress-fill {
+        background-color: #dc3545;
+    }
+    
+    .metric-ai {
+        background: linear-gradient(135deg, #ede9fe 0%, #c4b5fd 100%);
+        color: #212529;
+        border-left: 4px solid #7c3aed; /* Strong violet */
+        box-shadow: 0 3px 12px rgba(124, 58, 237, 0.15);
+    }
+    
+    .metric-ai .metric-title {
+        color: #6b21a8;
+        font-weight: 700;
+    }
+    
+    .metric-ai .metric-value {
+        color: #111827; /* dark gray for visibility */
+        text-shadow: none;
+    }
+    
+    .metric-ai .metric-subtitle {
+        color: #4b5563; /* soft gray */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.header("📈 Key Metrics")
     
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    # Calculate metrics
+    total_completed = sprint.GetTotalCompletedStoryPoints()
+    total_planned = sprint.GetTotalPlannedStoryPoints()
+    scope_drop = sprint.GetActualScopeDrop()
+    ai_capacity = sprint.GetAICapacity()
+    ai_percentage = (ai_capacity / total_completed * 100) if total_completed > 0 else 0
     
-    with col1:
-        st.metric("Total Completed", f"{sprint.GetTotalCompletedStoryPoints():.0f} SP")
+    # Calculate completion rate for progress bar
+    completion_rate = (total_completed / total_planned * 100) if total_planned > 0 else 0
+    completion_rate = min(completion_rate, 100)  # Cap at 100%
+    # Color code scope drop: green if low, yellow if medium, red if high
+    scope_color = "rgba(255, 255, 255, 0.9)"
+    if scope_drop <= 10:
+        scope_color = "rgba(56, 239, 125, 0.9)"
+    elif scope_drop <= 20:
+        scope_color = "rgba(255, 193, 7, 0.9)"
+    else:
+        scope_color = "rgba(220, 53, 69, 0.9)"
     
-    with col2:
-        st.metric("Total Planned", f"{sprint.GetTotalPlannedStoryPoints():.0f} SP")
-
-    with col3:
-        st.metric("Actual Scope Drop", f"{sprint.GetActualScopeDrop():.1f}%")
-
-    with col4:
-        st.metric("Naive Scope Drop", f"{sprint.GetNaiveScopeDrop():.1f}%")
-
-    with col5:
-        st.metric("Avg Capacity/Contributor", f"{sprint.GetAverageCapacityPerContributor():.1f} SP")
+    # Create enhanced metric cards in 2x2 layout
+    # Top row
+    top_col1, top_col2 = st.columns(2)
     
-    with col6:
-        st.metric("Avg SP per Item", f"{sprint.GetAverageStoryPointsPerItem():.1f}")
+    with top_col1:
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card metric-planned">
+                <div class="metric-icon">🎯</div>
+                <div class="metric-title">Total Planned</div>
+                <div class="metric-value">{total_planned:.0f}</div>
+                <div class="metric-subtitle">Story Points</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"""
+                            <div class="metric-card metric-completed">
+                                <div class="metric-icon">✅</div>
+                                <div class="metric-title">Total Completed</div>
+                                <div class="metric-value">{total_completed:.0f}</div>
+                                <div class="metric-subtitle">Story Points</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {completion_rate:.1f}%"></div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+                    <div class="metric-card metric-scope">
+                        <div class="metric-icon">📉</div>
+                        <div class="metric-title">Scope Drop</div>
+                        <div class="metric-value" style="color: {scope_color};">{scope_drop:.1f}%</div>
+                        <div class="metric-subtitle">From Original Plan</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {min(scope_drop, 100):.1f}%; background-color: {scope_color};"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+                <div class="metric-card metric-ai">
+                    <div class="metric-icon">🤖</div>
+                    <div class="metric-title">AI Coded</div>
+                    <div class="metric-value">{ai_percentage:.1f}%</div>
+                    <div class="metric-subtitle">{ai_capacity:.1f} Story Points</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {ai_percentage:.1f}%"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    with top_col2:
+        pass
+    
 
     # Backend Labels Breakdown
     st.header("🔧 Sprint Metrics Backend")
 
     # Get Backend label metrics
     backend_label_metrics = sprint.GetPlatformLabelMetrics('Backend')
+    
+    # Filter to only show team labels (labels starting with "team_")
+    if not backend_label_metrics.empty:
+        backend_label_metrics = backend_label_metrics[
+            backend_label_metrics['Label'].str.startswith('team_', na=False)
+        ]
 
     if not backend_label_metrics.empty:
         # Select columns to display for label breakdown
@@ -314,7 +485,6 @@ def main():
             'Avg_Story_Points',
             'Contributors',
             'Avg_Capacity_Per_Contributor',
-            'Naive_Scope_Drop',
             'Actual_Scope_Drop'
         ]
 
@@ -324,7 +494,6 @@ def main():
                 'Avg_Story_Points': '{:.1f}',
                 'Contributors': '{:.0f}',
                 'Avg_Capacity_Per_Contributor': '{:.1f}',
-                'Naive_Scope_Drop': '{:.1f}%',
                 'Actual_Scope_Drop': '{:.1f}%'
             }),
             use_container_width=True
@@ -335,14 +504,13 @@ def main():
     # Display capacity table
     st.header("📊 Sprint Metrics by Platform")
     
-    # Select columns to display (excluding the ones user wants to remove)
+    # Select columns to display (excluding naive scope drop)
     display_columns = [
         'Platform', 
         'Completed_Story_Points', 
         'Avg_Story_Points', 
         'Contributors', 
         'Avg_Capacity_Per_Contributor', 
-        'Naive_Scope_Drop',
         'Actual_Scope_Drop'
     ]
     
@@ -352,7 +520,6 @@ def main():
             'Avg_Story_Points': '{:.1f}',
             'Contributors': '{:.0f}',
             'Avg_Capacity_Per_Contributor': '{:.1f}',
-            'Naive_Scope_Drop': '{:.1f}%',
             'Actual_Scope_Drop': '{:.1f}%'
         }),
         use_container_width=True
@@ -366,7 +533,7 @@ def main():
     st.write(f"**Total records:** {len(filtered_df)}")
     
     # Display filtered data
-    display_columns = ['Summary', 'Platform', 'Status', 'Issue_Type', 'Story_Points', 'Assignee', 'Created']
+    display_columns = ['Summary', 'Platform', 'Status', 'Issue_Type', 'Story_Points', 'Assignee', 'Labels', 'Created']
     available_columns = [col for col in display_columns if col in filtered_df.columns]
     
     if available_columns:

@@ -273,6 +273,23 @@ class Sprint:
         
         return pd.DataFrame(capacity_list)
     
+    def GetAICapacity(self) -> float:
+        """
+        Get total capacity (story points) for all closed issues with 'vibe-codable' label.
+        
+        Returns:
+            float: Total story points of closed tasks that have the 'vibe-codable' label
+        """
+        closed_tasks = self.GetClosedTasks()
+        ai_capacity = 0.0
+        
+        for task in closed_tasks:
+            # Check if the task has the 'vibe-codable' label
+            if task.HasLabel('vibe-codable'):
+                ai_capacity += task.GetStoryPoints()
+        
+        return round(ai_capacity, 1)
+    
     def GetPlatformLabelMetrics(self, platform: str) -> pd.DataFrame:
         """
         Get comprehensive metrics broken down by labels for a specific platform.
@@ -296,36 +313,38 @@ class Sprint:
         
         # Process all platform tasks to gather label metrics
         for task in platform_tasks:
-            label = task.GetLabels()
-            if not label:  # Skip empty labels
-                label = 'No Label'
+            task_labels = task.GetLabels()
+            if not task_labels:  # Skip tasks with no labels
+                task_labels = ['No Label']
                 
-            if label not in labels:
-                labels[label] = {
-                    'total_planned_points': 0,
-                    'completed_points': 0,
-                    'originally_planned_points': 0,
-                    'originally_completed_points': 0,
-                    'completed_items': 0,
-                    'contributors': set()
-                }
-            
-            # Add to label totals
-            labels[label]['total_planned_points'] += task.GetStoryPoints()
-            labels[label]['contributors'].add(task.GetAssignee())
-            
-            # If closed in sprint
-            if task in closed_tasks:
-                labels[label]['completed_points'] += task.GetStoryPoints()
-                labels[label]['completed_items'] += 1
-            
-            # If originally planned
-            if task in originally_planned_tasks:
-                labels[label]['originally_planned_points'] += task.GetStoryPoints()
+            # For each label on this task, add the task's metrics to that label
+            for label in task_labels:
+                if label not in labels:
+                    labels[label] = {
+                        'total_planned_points': 0,
+                        'completed_points': 0,
+                        'originally_planned_points': 0,
+                        'originally_completed_points': 0,
+                        'completed_items': 0,
+                        'contributors': set()
+                    }
                 
-                # If originally planned AND closed in sprint
+                # Add to label totals
+                labels[label]['total_planned_points'] += task.GetStoryPoints()
+                labels[label]['contributors'].add(task.GetAssignee())
+                
+                # If closed in sprint
                 if task in closed_tasks:
-                    labels[label]['originally_completed_points'] += task.GetStoryPoints()
+                    labels[label]['completed_points'] += task.GetStoryPoints()
+                    labels[label]['completed_items'] += 1
+                
+                # If originally planned
+                if task in originally_planned_tasks:
+                    labels[label]['originally_planned_points'] += task.GetStoryPoints()
+                    
+                    # If originally planned AND closed in sprint
+                    if task in closed_tasks:
+                        labels[label]['originally_completed_points'] += task.GetStoryPoints()
         
         # Convert to DataFrame format
         label_data = []
@@ -337,7 +356,7 @@ class Sprint:
             contributors_count = len(metrics['contributors'])
             
             # Calculate full-time contributors for this label (≥5 SP)
-            label_tasks = [task for task in platform_tasks if task.GetLabels() == label]
+            label_tasks = [task for task in platform_tasks if task.HasLabel(label)]
             label_contributor_points = {}
             
             for task in label_tasks:
@@ -362,19 +381,25 @@ class Sprint:
                                metrics['originally_planned_points'] * 100 
                                if metrics['originally_planned_points'] > 0 else 0)
             
-            label_data.append({
-                'Label': label,
-                'Completed_Story_Points': round(metrics['completed_points'], 1),
-                'Completed_Items': metrics['completed_items'],
-                'Avg_Story_Points': round(avg_story_points, 1),
-                'Contributors': full_time_contributors_count,  # Only count full-time contributors
-                'Avg_Capacity_Per_Contributor': round(avg_capacity_per_contributor, 1),
-                'Total_Planned_Story_Points': round(metrics['total_planned_points'], 1),
-                'First_Day_Planned_Story_Points': round(metrics['originally_planned_points'], 1),
-                'First_Day_Completed_Story_Points': round(metrics['originally_completed_points'], 1),
-                'Naive_Scope_Drop': round(naive_scope_drop, 1),
-                'Actual_Scope_Drop': round(actual_scope_drop, 1)
-            })
+            # Only include labels that have meaningful activity (completed points, items, or contributors)
+            # This filters out empty "No Label" entries that would show up with all zeros
+            if (metrics['completed_points'] > 0 or 
+                metrics['completed_items'] > 0 or 
+                full_time_contributors_count > 0):
+                
+                label_data.append({
+                    'Label': label,
+                    'Completed_Story_Points': round(metrics['completed_points'], 1),
+                    'Completed_Items': metrics['completed_items'],
+                    'Avg_Story_Points': round(avg_story_points, 1),
+                    'Contributors': full_time_contributors_count,  # Only count full-time contributors
+                    'Avg_Capacity_Per_Contributor': round(avg_capacity_per_contributor, 1),
+                    'Total_Planned_Story_Points': round(metrics['total_planned_points'], 1),
+                    'First_Day_Planned_Story_Points': round(metrics['originally_planned_points'], 1),
+                    'First_Day_Completed_Story_Points': round(metrics['originally_completed_points'], 1),
+                    'Naive_Scope_Drop': round(naive_scope_drop, 1),
+                    'Actual_Scope_Drop': round(actual_scope_drop, 1)
+                })
         
         return pd.DataFrame(label_data)
     
@@ -392,7 +417,7 @@ class Sprint:
         # Filter tasks for the specified platform and label
         platform_label_tasks = [
             task for task in self.tasks 
-            if task.GetPlatform() == platform and task.GetLabels() == label
+            if task.GetPlatform() == platform and task.HasLabel(label)
         ]
         
         if not platform_label_tasks:
@@ -541,6 +566,7 @@ class Sprint:
             'total_planned': self.GetTotalPlannedStoryPoints(),
             'originally_planned': self.GetOriginallyPlannedStoryPoints(),
             'originally_completed': self.GetOriginallyCompletedStoryPoints(),
+            'ai_capacity': self.GetAICapacity(),
             'naive_scope_drop': round(self.GetNaiveScopeDrop(), 1),
             'actual_scope_drop': round(self.GetActualScopeDrop(), 1),
             'completed_items': self.GetCompletedItems(),

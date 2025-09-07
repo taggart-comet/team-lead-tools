@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 
 class Task:
@@ -28,10 +28,10 @@ class Task:
         # Platform and assignment
         self.platform = row_data.get('Platform', '')
         self.assignee = row_data.get('Assignee', '')
-        self.labels = row_data.get('Labels', '')
+        self.labels = self._parse_labels(row_data)
         
         # Story points and metrics
-        self.story_points = self._parse_story_points(row_data.get('Story_Points', 0))
+        self.story_points = self._parse_story_points(row_data)
         
         # Dates
         self.created_date = self._parse_date(row_data.get('Created'))
@@ -44,8 +44,42 @@ class Task:
         # Store original row data for extensibility
         self._raw_data = row_data
     
-    def _parse_story_points(self, value: Any) -> float:
-        """Parse story points value to float, handling various formats."""
+    def _parse_labels(self, row_data: pd.Series) -> List[str]:
+        """Parse labels from potentially multiple 'Labels' columns in the CSV."""
+        labels = []
+        
+        # Check for all columns that start with 'Labels'
+        for col_name in row_data.index:
+            if col_name == 'Labels' or (isinstance(col_name, str) and col_name.startswith('Labels')):
+                label_value = row_data.get(col_name, '')
+                if pd.notna(label_value) and label_value != '':
+                    # Handle case where label might still be comma-separated in a single column
+                    if ',' in str(label_value):
+                        split_labels = [label.strip() for label in str(label_value).split(',')]
+                        labels.extend([label for label in split_labels if label])
+                    else:
+                        labels.append(str(label_value).strip())
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_labels = []
+        for label in labels:
+            if label not in seen:
+                seen.add(label)
+                unique_labels.append(label)
+        
+        return unique_labels
+    
+    def _parse_story_points(self, row_data: Any) -> float:
+
+        value = row_data.get('Story_Points', '')
+        if not value:
+            value = row_data.get('Story Points', '')
+        if not value:
+            value = row_data.get('Custom field (Story Points)', '')
+        if not value:
+            value = row_data.get('Custom field (Story Points [Total])', '')
+
         try:
             if pd.isna(value):
                 return 0.0
@@ -145,9 +179,17 @@ class Task:
         """Get the assignee of this task."""
         return self.assignee
     
-    def GetLabels(self) -> str:
-        """Get the labels assigned to this task."""
+    def GetLabels(self) -> List[str]:
+        """Get the labels assigned to this task as a list."""
         return self.labels
+    
+    def GetLabelsAsString(self, separator: str = ', ') -> str:
+        """Get the labels as a comma-separated string for backward compatibility."""
+        return separator.join(self.labels)
+    
+    def HasLabel(self, label: str) -> bool:
+        """Check if this task has a specific label."""
+        return label in self.labels
     
     def __str__(self) -> str:
         """String representation of the task."""
